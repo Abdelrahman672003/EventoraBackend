@@ -344,7 +344,12 @@ router.get(
         query.category = req.query.category;
       }
       if (req.query.search) {
-        query.$text = { $search: req.query.search };
+        // Case-insensitive search using regex
+        query.$or = [
+          { name: { $regex: req.query.search, $options: 'i' } },
+          { description: { $regex: req.query.search, $options: 'i' } },
+          { venue: { $regex: req.query.search, $options: 'i' } }
+        ];
       }
       if (req.query.minPrice) {
         query.price = { ...query.price, $gte: parseFloat(req.query.minPrice) };
