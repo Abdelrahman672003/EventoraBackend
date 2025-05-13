@@ -6,74 +6,20 @@ const Event = require("../models/event.model");
 const multer = require("multer");
 const cloudinary = require("cloudinary").v2;
 
-/**
- * @swagger
- * components:
- *   schemas:
- *     Event:
- *       type: object
- *       required:
- *         - name
- *         - description
- *         - category
- *         - date
- *         - time
- *         - venue
- *         - price
- *         - image
- *         - totalTickets
- *       properties:
- *         id:
- *           type: integer
- *           description: Auto-incrementing unique identifier
- *         name:
- *           type: string
- *         description:
- *           type: string
- *         category:
- *           type: string
- *         tags:
- *           type: array
- *           items:
- *             type: string
- *         date:
- *           type: string
- *           format: date
- *         time:
- *           type: string
- *           format: time
- *           description: Event time in HH:mm format
- *         venue:
- *           type: string
- *         price:
- *           type: number
- *         image:
- *           type: string
- *         totalTickets:
- *           type: integer
- *         availableTickets:
- *           type: integer
- *         createdBy:
- *           type: string
- *           format: uuid
- */
-
-// Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Configure Multer for image upload
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit
+    fileSize: 5 * 1024 * 1024,
   },
 });
 
-// Helper function to parse event ID
+//  parse event ID
 const parseEventId = (id) => {
   const parsedId = parseInt(id);
   if (isNaN(parsedId)) {
@@ -82,20 +28,18 @@ const parseEventId = (id) => {
   return parsedId;
 };
 
-// Helper function to add isFavorite field to events
+// add isFavorite field to events
 const addIsFavoriteField = (events, userId) => {
   if (!userId)
     return events.map((event) => ({ ...event.toObject(), isFavorite: false }));
 
   return events.map((event) => {
     const eventObj = event.toObject();
-    // Convert both IDs to strings for comparison
     const userIdStr = userId.toString();
     const isFavorite =
       eventObj.interestedUsers &&
       eventObj.interestedUsers.some((id) => id.toString() === userIdStr);
 
-    // Create a new object without interestedUsers
     const { interestedUsers, ...eventWithoutUsers } = eventObj;
 
     return {
@@ -105,88 +49,26 @@ const addIsFavoriteField = (events, userId) => {
   });
 };
 
-// Helper function to add isBooked field to events
+// add isBooked field to events
 const addIsBookedField = async (events, userId) => {
   if (!userId) {
-    return events.map(event => ({ ...event, isBooked: false }));
+    return events.map((event) => ({ ...event, isBooked: false }));
   }
 
-  // Get all active bookings for the user
-  const Booking = require('../models/booking.model');
-  const userBookings = await Booking.find({ 
+  const Booking = require("../models/booking.model");
+  const userBookings = await Booking.find({
     user: userId,
-    status: 'active'
-  }).select('event');
+    status: "active",
+  }).select("event");
 
-  // Create a set of booked event IDs for faster lookup
-  const bookedEventIds = new Set(userBookings.map(booking => booking.event));
-
-  // Add isBooked field to each event
-  return events.map(event => ({
+  const bookedEventIds = new Set(userBookings.map((booking) => booking.event));
+  return events.map((event) => ({
     ...event,
-    isBooked: bookedEventIds.has(event.id)
+    isBooked: bookedEventIds.has(event.id),
   }));
 };
 
-/**
- * @swagger
- * /api/events:
- *   post:
- *     summary: Create a new event (Admin only)
- *     tags: [Events]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             required:
- *               - name
- *               - description
- *               - category
- *               - date
- *               - time
- *               - venue
- *               - price
- *               - totalTickets
- *               - image
- *             properties:
- *               name:
- *                 type: string
- *               description:
- *                 type: string
- *               category:
- *                 type: string
- *               date:
- *                 type: string
- *                 format: date
- *               time:
- *                 type: string
- *                 format: time
- *                 description: Event time in HH:mm format
- *               venue:
- *                 type: string
- *               price:
- *                 type: number
- *               totalTickets:
- *                 type: integer
- *               image:
- *                 type: string
- *                 format: binary
- *     responses:
- *       201:
- *         description: Event created successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Event'
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: Forbidden - Admin access required
- */
+// Routers
 router.post(
   "/",
   auth,
@@ -202,6 +84,7 @@ router.post(
       .withMessage("Valid time in HH:mm format is required"),
     body("venue").notEmpty().withMessage("Venue is required"),
     body("price").isNumeric().withMessage("Valid price is required"),
+    // for future updates to handle more than 1 ticket per user
     body("totalTickets")
       .isInt({ min: 1 })
       .withMessage("Total tickets must be at least 1"),
@@ -217,12 +100,10 @@ router.post(
         return res.status(400).json({ message: "Event image is required" });
       }
 
-      // Upload image to Cloudinary
       const b64 = Buffer.from(req.file.buffer).toString("base64");
       const dataURI = `data:${req.file.mimetype};base64,${b64}`;
       const result = await cloudinary.uploader.upload(dataURI);
 
-      // Create event with time field
       const event = new Event({
         name: req.body.name,
         description: req.body.description,
@@ -250,80 +131,15 @@ router.post(
   }
 );
 
-/**
- * @swagger
- * /api/events:
- *   get:
- *     summary: Get all events with pagination and filters
- *     tags: [Events]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *         description: Page number
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *         description: Items per page
- *       - in: query
- *         name: search
- *         schema:
- *           type: string
- *         description: Search term
- *       - in: query
- *         name: category
- *         schema:
- *           type: string
- *         description: Filter by category
- *       - in: query
- *         name: minPrice
- *         schema:
- *           type: number
- *         description: Minimum price filter
- *       - in: query
- *         name: maxPrice
- *         schema:
- *           type: number
- *         description: Maximum price filter
- *       - in: query
- *         name: date
- *         schema:
- *           type: string
- *           format: date
- *         description: Filter by date
- *     responses:
- *       200:
- *         description: List of events
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 events:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/Event'
- *                 currentPage:
- *                   type: integer
- *                 totalPages:
- *                   type: integer
- *                 totalEvents:
- *                   type: integer
- */
 router.get(
   "/",
   async (req, res, next) => {
-    // Try to authenticate but don't require it
+    // to allow fetching events without authentication
     auth(
       req,
       res,
       (err) => {
         if (err) {
-          // If authentication fails, continue without user info
           req.user = null;
         }
         next();
@@ -339,16 +155,14 @@ router.get(
 
       const query = {};
 
-      // Add filters
       if (req.query.category) {
         query.category = req.query.category;
       }
       if (req.query.search) {
-        // Case-insensitive search using regex
         query.$or = [
-          { name: { $regex: req.query.search, $options: 'i' } },
-          { description: { $regex: req.query.search, $options: 'i' } },
-          { venue: { $regex: req.query.search, $options: 'i' } }
+          { name: { $regex: req.query.search, $options: "i" } },
+          { description: { $regex: req.query.search, $options: "i" } },
+          { venue: { $regex: req.query.search, $options: "i" } },
         ];
       }
       if (req.query.minPrice) {
@@ -369,11 +183,11 @@ router.get(
 
       const total = await Event.countDocuments(query);
 
-      // Add isFavorite field to each event
       const eventsWithFavorite = addIsFavoriteField(events, req.user?._id);
-      
-      // Add isBooked field to each event
-      const eventsWithBookingStatus = await addIsBookedField(eventsWithFavorite, req.user?._id);
+      const eventsWithBookingStatus = await addIsBookedField(
+        eventsWithFavorite,
+        req.user?._id
+      );
 
       res.json({
         events: eventsWithBookingStatus,
@@ -390,26 +204,6 @@ router.get(
   }
 );
 
-/**
- * @swagger
- * /api/events/favorites:
- *   get:
- *     summary: Get user's favorite events
- *     tags: [Events]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: List of favorite events
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Event'
- *       401:
- *         description: Unauthorized
- */
 router.get("/favorites", auth, async (req, res) => {
   try {
     const events = await Event.find({ interestedUsers: req.user._id }).populate(
@@ -417,11 +211,11 @@ router.get("/favorites", auth, async (req, res) => {
       "name email"
     );
 
-    // Add isFavorite field to each event (will all be true since they're favorites)
     const eventsWithFavorite = addIsFavoriteField(events, req.user._id);
-
-    // Add isBooked field to each event
-    const eventsWithBookingStatus = await addIsBookedField(eventsWithFavorite, req.user._id);
+    const eventsWithBookingStatus = await addIsBookedField(
+      eventsWithFavorite,
+      req.user._id
+    );
 
     res.json(eventsWithBookingStatus);
   } catch (error) {
@@ -432,132 +226,52 @@ router.get("/favorites", auth, async (req, res) => {
   }
 });
 
-/**
- * @swagger
- * /api/events/{id}:
- *   get:
- *     summary: Get a single event by ID
- *     tags: [Events]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Event ID (numeric)
- *     responses:
- *       200:
- *         description: Event details
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Event'
- *       404:
- *         description: Event not found
- */
-router.get("/:id", async (req, res, next) => {
-  // Try to authenticate but don't require it
-  auth(
-    req,
-    res,
-    (err) => {
-      if (err) {
-        // If authentication fails, continue without user info
-        req.user = null;
-      }
-      next();
-    },
-    true
-  );
-}, async (req, res) => {
-  try {
-    const eventId = parseEventId(req.params.id);
-    const event = await Event.findOne({ id: eventId }).populate(
-      "createdBy",
-      "name email"
+router.get(
+  "/:id",
+  async (req, res, next) => {
+    // to allow fetching event without authentication
+    auth(
+      req,
+      res,
+      (err) => {
+        if (err) {
+          req.user = null;
+        }
+        next();
+      },
+      true
     );
+  },
+  async (req, res) => {
+    try {
+      const eventId = parseEventId(req.params.id);
+      const event = await Event.findOne({ id: eventId }).populate(
+        "createdBy",
+        "name email"
+      );
 
-    if (!event) {
-      return res.status(404).json({ message: "Event not found" });
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+
+      const eventWithFavorite = addIsFavoriteField([event], req.user?._id)[0];
+      const eventWithBookingStatus = (
+        await addIsBookedField([eventWithFavorite], req.user?._id)
+      )[0];
+
+      res.json(eventWithBookingStatus);
+    } catch (error) {
+      if (error.message === "Invalid event ID") {
+        return res.status(400).json({ message: error.message });
+      }
+      res.status(500).json({
+        message: "Error fetching event",
+        error: error.message,
+      });
     }
-
-    // Add isFavorite field to the event
-    const eventWithFavorite = addIsFavoriteField([event], req.user?._id)[0];
-
-    // Add isBooked field to the event
-    const eventWithBookingStatus = (await addIsBookedField([eventWithFavorite], req.user?._id))[0];
-
-    res.json(eventWithBookingStatus);
-  } catch (error) {
-    if (error.message === "Invalid event ID") {
-      return res.status(400).json({ message: error.message });
-    }
-    res.status(500).json({
-      message: "Error fetching event",
-      error: error.message,
-    });
   }
-});
+);
 
-/**
- * @swagger
- * /api/events/{id}:
- *   put:
- *     summary: Update an event (Admin only)
- *     tags: [Events]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Event ID (numeric)
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             properties:
- *               name:
- *                 type: string
- *               description:
- *                 type: string
- *               category:
- *                 type: string
- *               date:
- *                 type: string
- *                 format: date
- *               time:
- *                 type: string
- *                 format: time
- *                 description: Event time in HH:mm format
- *               venue:
- *                 type: string
- *               price:
- *                 type: number
- *               totalTickets:
- *                 type: integer
- *               image:
- *                 type: string
- *                 format: binary
- *                 nullable: true
- *     responses:
- *       200:
- *         description: Event updated successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Event'
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: Forbidden - Admin access required
- *       404:
- *         description: Event not found
- */
 router.put("/:id", auth, isAdmin, upload.single("image"), async (req, res) => {
   try {
     const eventId = parseEventId(req.params.id);
@@ -569,16 +283,12 @@ router.put("/:id", auth, isAdmin, upload.single("image"), async (req, res) => {
 
     const updates = { ...req.body };
 
-    // Handle total tickets and available tickets update
     if (updates.totalTickets) {
       const oldTotalTickets = event.totalTickets;
       const newTotalTickets = parseInt(updates.totalTickets);
       const ticketsDifference = newTotalTickets - oldTotalTickets;
-
-      // Update available tickets by adding the difference
       updates.availableTickets = event.availableTickets + ticketsDifference;
 
-      // Ensure available tickets doesn't go below 0
       if (updates.availableTickets < 0) {
         return res.status(400).json({
           message:
@@ -587,7 +297,6 @@ router.put("/:id", auth, isAdmin, upload.single("image"), async (req, res) => {
       }
     }
 
-    // Only update image if a new one is provided
     if (req.file) {
       const b64 = Buffer.from(req.file.buffer).toString("base64");
       const dataURI = `data:${req.file.mimetype};base64,${b64}`;
@@ -613,31 +322,6 @@ router.put("/:id", auth, isAdmin, upload.single("image"), async (req, res) => {
   }
 });
 
-/**
- * @swagger
- * /api/events/{id}:
- *   delete:
- *     summary: Delete an event (Admin only)
- *     tags: [Events]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Event ID (numeric)
- *     responses:
- *       200:
- *         description: Event deleted successfully
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: Forbidden - Admin access required
- *       404:
- *         description: Event not found
- */
 router.delete("/:id", auth, isAdmin, async (req, res) => {
   try {
     const eventId = parseEventId(req.params.id);
@@ -659,31 +343,6 @@ router.delete("/:id", auth, isAdmin, async (req, res) => {
   }
 });
 
-/**
- * @swagger
- * /api/events/{id}/favorite:
- *   post:
- *     summary: Add an event to favorites
- *     tags: [Events]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Event ID
- *     responses:
- *       200:
- *         description: Event added to favorites successfully
- *       400:
- *         description: Event already in favorites
- *       401:
- *         description: Unauthorized
- *       404:
- *         description: Event not found
- */
 router.post("/:id/favorite", auth, async (req, res) => {
   try {
     const eventId = parseEventId(req.params.id);
@@ -693,12 +352,10 @@ router.post("/:id/favorite", auth, async (req, res) => {
       return res.status(404).json({ message: "Event not found" });
     }
 
-    // Check if user already has this event in favorites
     if (event.interestedUsers.includes(req.user._id)) {
       return res.status(400).json({ message: "Event already in favorites" });
     }
 
-    // Add user to interested users and increment count
     event.interestedUsers.push(req.user._id);
     event.interestedCount += 1;
     await event.save();
@@ -718,40 +375,6 @@ router.post("/:id/favorite", auth, async (req, res) => {
   }
 });
 
-/**
- * @swagger
- * /api/events/{id}/favorite:
- *   delete:
- *     summary: Remove an event from user's favorites
- *     tags: [Events]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: Event ID
- *     responses:
- *       200:
- *         description: Event removed from favorites successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                 interestedCount:
- *                   type: integer
- *       400:
- *         description: Event not in favorites
- *       401:
- *         description: Unauthorized
- *       404:
- *         description: Event not found
- */
 router.delete("/:id/favorite", auth, async (req, res) => {
   try {
     const eventId = parseEventId(req.params.id);
@@ -761,12 +384,10 @@ router.delete("/:id/favorite", auth, async (req, res) => {
       return res.status(404).json({ message: "Event not found" });
     }
 
-    // Check if user has this event in favorites
     if (!event.interestedUsers.includes(req.user._id)) {
       return res.status(400).json({ message: "Event not in favorites" });
     }
 
-    // Remove user from interested users and decrement count
     event.interestedUsers = event.interestedUsers.filter(
       (userId) => userId.toString() !== req.user._id.toString()
     );

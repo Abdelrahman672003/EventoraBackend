@@ -5,7 +5,7 @@ const { auth } = require('../middleware/auth.middleware');
 const Booking = require('../models/booking.model');
 const Event = require('../models/event.model');
 
-// Helper function to parse booking ID
+// parse booking ID
 const parseBookingId = (id) => {
   const parsedId = parseInt(id);
   if (isNaN(parsedId)) {
@@ -14,7 +14,7 @@ const parseBookingId = (id) => {
   return parsedId;
 };
 
-// Create booking
+// Routers
 router.post('/', auth, [
   body('eventId').notEmpty().withMessage('Event ID is required'),
   body('quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1')
@@ -26,19 +26,15 @@ router.post('/', auth, [
     }
 
     const { eventId, quantity } = req.body;
-
-    // Find event
     const event = await Event.findOne({ id: eventId });
     if (!event) {
       return res.status(404).json({ message: 'Event not found' });
     }
 
-    // Check ticket availability
     if (event.availableTickets < quantity) {
       return res.status(400).json({ message: 'Not enough tickets available' });
     }
 
-    // Create booking
     const booking = new Booking({
       user: req.user._id,
       event: eventId,
@@ -46,7 +42,6 @@ router.post('/', auth, [
       totalPrice: event.price * quantity
     });
 
-    // Update available tickets
     event.availableTickets -= quantity;
     await event.save();
     await booking.save();
@@ -57,7 +52,6 @@ router.post('/', auth, [
   }
 });
 
-// Get user's bookings
 router.get('/my-bookings', auth, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -69,7 +63,6 @@ router.get('/my-bookings', auth, async (req, res) => {
       .skip(skip)
       .limit(limit);
 
-    // Manually populate events using the id field
     const populatedBookings = await Promise.all(bookings.map(async (booking) => {
       const bookingObj = booking.toObject();
       const event = await Event.findOne({ id: booking.event }).select('id name date venue image category price isFavorite');
@@ -92,7 +85,6 @@ router.get('/my-bookings', auth, async (req, res) => {
   }
 });
 
-// Cancel booking
 router.put('/:id/cancel', auth, async (req, res) => {
   try {
     const bookingId = parseBookingId(req.params.id);
@@ -102,22 +94,18 @@ router.put('/:id/cancel', auth, async (req, res) => {
       return res.status(404).json({ message: 'Booking not found' });
     }
 
-    // Check if booking belongs to user
     if (booking.user.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Not authorized to cancel this booking' });
     }
 
-    // Check if booking is already cancelled
     if (booking.status === 'cancelled') {
       return res.status(400).json({ message: 'Booking is already cancelled' });
     }
 
-    // Update event's available tickets
     const event = await Event.findOne({ id: booking.event });
     event.availableTickets += booking.quantity;
     await event.save();
 
-    // Update booking status
     booking.status = 'cancelled';
     await booking.save();
 
@@ -130,7 +118,6 @@ router.put('/:id/cancel', auth, async (req, res) => {
   }
 });
 
-// Get booking details
 router.get('/:id', auth, async (req, res) => {
   try {
     const bookingId = parseBookingId(req.params.id);
@@ -144,7 +131,6 @@ router.get('/:id', auth, async (req, res) => {
       return res.status(404).json({ message: 'Booking not found' });
     }
 
-    // Check if booking belongs to user
     if (booking.user.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Not authorized to view this booking' });
     }
