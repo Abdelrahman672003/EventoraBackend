@@ -116,9 +116,7 @@ router.post(
         image: result.secure_url,
         availableTickets: req.body.totalTickets,
         createdBy: req.user._id,
-        tags: req.body.tags
-          ? req.body.tags.split(",").map((tag) => tag.trim())
-          : [],
+        tags: req.body.tags === "" ? [] : req.body.tags,
       });
 
       await event.save();
@@ -297,11 +295,9 @@ router.put("/:id", auth, isAdmin, upload.single("image"), async (req, res) => {
       }
     }
 
-    // Handle tags update
-    console.log(updates.tags);
     if (updates.tags !== undefined) {
       if (updates.tags === "") {
-        updates.tags = []; // Remove all tags if empty string is provided
+        updates.tags = [];
       }
     }
 
