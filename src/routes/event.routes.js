@@ -297,6 +297,15 @@ router.put("/:id", auth, isAdmin, upload.single("image"), async (req, res) => {
       }
     }
 
+    // Handle tags update
+    if (updates.tags !== undefined) {
+      if (updates.tags === "") {
+        updates.tags = []; // Remove all tags if empty string is provided
+      } else if (typeof updates.tags === 'string') {
+        updates.tags = updates.tags.split(",").map((tag) => tag.trim());
+      }
+    }
+
     if (req.file) {
       const b64 = Buffer.from(req.file.buffer).toString("base64");
       const dataURI = `data:${req.file.mimetype};base64,${b64}`;
